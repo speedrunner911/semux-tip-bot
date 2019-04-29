@@ -6,20 +6,20 @@ const Long = require('long')
 const rp = require('request-promise')
 const botSettings = require('./config/config-bot.json')
 const getPrice = require('./getPrice.js')
-const prefix = botSettings.prefix
-const API = 'https://api.testnet.semux.online/v2.2.0/'
-
 const { Users } = require('./models')
 
+const prefix = botSettings.prefix
 const bot = new Discord.Client({ disableEveryone: true })
 
+const API = 'https://api.semux.online/v2.1.0/'
+const FEE = 5000000
+
 bot.on('ready', () => {
-  console.log('Bot is ready for work')
+  console.log('Bot is connected.')
 })
 
 async function getAddress (address) {
-  const addressData = JSON.parse(await rp(API + 'account?address=' + address))
-  return addressData
+  return JSON.parse(await rp(API + 'account?address=' + address))
 }
 
 async function sendToApi (tx) {
@@ -27,7 +27,7 @@ async function sendToApi (tx) {
   try {
     var { result } = await rp({
       method: 'POST',
-      uri: `https://api.testnet.semux.online/v2.2.0/transaction/raw?raw=${serialize}&validateNonce=true`,
+      uri: `${API}transaction/raw?raw=${serialize}&validateNonce=true`,
       json: true
     })
   } catch (e) {
@@ -39,9 +39,19 @@ async function sendToApi (tx) {
 }
 
 async function sendCoins (authorId, toAddress, value, msg) {
-  if (!toAddress || !value) return { error: true, reason: 'Amount of SEM and Discord Username are required.' }
+  if (!toAddress || !value) {
+    return {
+      error: true,
+      reason: 'Amount of SEM and Discord Username are required.'
+    }
+  }
   const from = await Users.findOne({ where: { discord_id: authorId } })
-  if (!from) return { error: true, reason: "You don't have account yet, type /getAddress first." }
+  if (!from) {
+    return {
+      error: true,
+      reason: "You don't have account yet, type /getAddress first."
+    }
+  }
   var isFrom = await getAddress(from.address)
   try {
     await getAddress(toAddress)
@@ -49,24 +59,28 @@ async function sendCoins (authorId, toAddress, value, msg) {
     return { error: true, reason: 'Wrong recipient, try another one.' }
   }
   if (value.includes(',')) value = value.replace(/,/g, '.')
-  let amount = Number(value)
+  let amount = parseFloat(value)
   if (!amount) return { error: true, reason: 'Amount is not correct.' }
   amount = amount * Math.pow(10, 9)
   if (amount < 0.000000001) return { error: true, reason: 'Wrong amount, try another one.' }
   // check reciever balance before transfer
   const fromAddressBal = await getAddress(from.address)
-  let nonce = parseInt(isFrom.result.nonce) + parseInt(isFrom.result.pendingTransactionCount)
-  if (fromAddressBal.result.available < (amount + 0.005)) {
-    return { error: true, reason: `Insufficient balance, you have **${parseBal(fromAddressBal.result.available)} SEM**` }
+  let nonce = parseInt(isFrom.result.nonce, 10) + parseInt(isFrom.result.pendingTransactionCount, 10)
+  const available = parseFloat(fromAddressBal.result.available)
+  if (available === amount) {
+    amount = amount - FEE
+  }
+  if (available < (amount + FEE)) {
+    return { error: true, reason: `Insufficient balance, you have **${parseBal(available)} SEM**` }
   }
   const privateKey = Key.importEncodedPrivateKey(hexBytes(from.private_key))
   try {
     var tx = new Transaction(
-      Network.TESTNET,
+      Network.MAINNET,
       TransactionType.TRANSFER,
       hexBytes(toAddress), // to
       Long.fromNumber(amount), // value
-      Long.fromNumber(5000000), // fee
+      Long.fromNumber(FEE), // fee
       Long.fromNumber(nonce), // nonce
       Long.fromNumber(new Date().getTime()), // timestamp
       '0x746970' // data
@@ -85,7 +99,7 @@ async function sendCoins (authorId, toAddress, value, msg) {
 
 async function changeStats (senderId, recieverId, value) {
   if (value.includes(',')) value = value.replace(/,/g, '.')
-  let amount = Number(value)
+  let amount = parseFloat(value)
   let sender = await Users.findOne({ where: { discord_id: senderId } })
   let reciever = await Users.findOne({ where: { discord_id: recieverId } })
   await sender.update({
@@ -133,7 +147,7 @@ bot.on('message', async msg => {
       const key = Key.generateKeyPair()
       const privateKey = toHexString(key.getEncodedPrivateKey())
       const address = '0x' + key.toAddressHexString()
-      const newUserName = bot.users.find(user => user.id == usernameId)
+      const newUserName = bot.users.find(user => user.id === usernameId)
       if (!newUserName) {
         return msg.reply('Cannt find this user on the server.')
       }
@@ -147,7 +161,7 @@ bot.on('message', async msg => {
     } else {
       userAddress = userAddress.address
     }
-    let reciever = bot.users.find(user => user.id == usernameId)
+    let reciever = bot.users.find(user => user.id === usernameId)
     if (!reciever) return msg.reply('Wrong username, try another one')
     try {
       var trySend = await sendCoins(authorId, userAddress, amount, msg)
@@ -156,7 +170,7 @@ bot.on('message', async msg => {
     }
     if (trySend.error) return msg.reply(trySend.reason)
     await changeStats(authorId, usernameId, amount)
-    await reciever.send(`You've successfully tipped. TX: <https://semux.info/explorer/transaction/${trySend.hash}>`)
+    await reciever.send(`You've received tips. TX: <https://semux.info/explorer/transaction/${trySend.hash}> \nSend me: \`/balance\` or \`/help\` to find more details`)
     await msg.reply(`Tip sent. TX: <https://semux.info/explorer/transaction/${trySend.hash}>`)
   }
 
@@ -185,8 +199,17 @@ bot.on('message', async msg => {
   if (msg.content.startsWith(`${prefix}withdraw`)) {
     const amount = args[2]
     const toAddress = args[1]
-    await sendCoins(authorId, toAddress, amount, msg)
-    msg.author.send('Your withdrawal requests has been processed successfully. Broadcasting transaction to the network now.')
+    let trySend
+    try {
+      trySend = await sendCoins(authorId, toAddress, amount, msg)
+    } catch (e) {
+      // console.log(e)
+    }
+    if (trySend.error) {
+      msg.author.send(trySend.reason)
+    } else {
+      msg.author.send('Your withdrawal request has been processed successfully. Broadcasting transaction to the network now.')
+    }
   }
 
   // balance
@@ -204,9 +227,9 @@ bot.on('message', async msg => {
       if (totalBal > 50000) {
         msg.channel.send(`Your balance is: **${availabeBal}** SEM (*${usdBalance} USD*), congrats, you are the whale.`)
       } else if (totalBal > 1000 && totalBal < 3000) {
-        msg.channel.send(`Your balance is: **${availabeBal}** SEM (*${usdBalance} USD*), congrats, you are the shark.`)
-      } else if (totalBal > 3000 && totalBal < 10000) {
         msg.channel.send(`Your balance is: **${availabeBal}** SEM (*${usdBalance} USD*), congrats, you are the dolphin.`)
+      } else if (totalBal >= 3000 && totalBal < 10000) {
+        msg.channel.send(`Your balance is: **${availabeBal}** SEM (*${usdBalance} USD*), congrats, you are the shark.`)
       } else if (totalBal === 0) {
         msg.channel.send(`Your wallet is empty: **${availabeBal}** SEM`)
       } else {
@@ -248,7 +271,7 @@ function numberFormat (balance) {
 }
 
 function parseBal (balance) {
-  return Number((Number(balance) / Math.pow(10, 9)).toFixed(10))
+  return parseFloat((parseFloat(balance) / Math.pow(10, 9)).toFixed(10))
 }
 
 function hexBytes (s) {

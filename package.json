@@ -15,7 +15,7 @@
     "pg": "^7.8.0",
     "request": "^2.88.0",
     "request-promise": "^4.2.4",
-    "semux-js": "^1.2.0",
+    "semux-js": "https://github.com/semuxproject/semux-js",
     "sequelize": "^4.42.0",
     "sqlite3": "^4.0.6"
   },

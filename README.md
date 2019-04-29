@@ -1,31 +1,31 @@
 
 # Discord-semux-tip-bot
 
-Bot created for Semux discord channel. 
-Bot use semux.js, so you need to run local node or another opened Semux node.
+Tip bot for Semux discord channel: https://discord.gg/qQVckKZ 
 
-**Bot can:**
-* tip discord users in SEM. 
-* check balance on Sem address.
-* withdraw SEM to any address.
-* create a unique new address for each user.
-* shows list of the most active donators.
-* shows list of the most luckiest receivers.
-* show semux stats
-* shows all commands.
+**Features:**
+* deposit SEM to a personal address;
+* send tips to discord users in SEM;
+* check balance;
+* withdraw SEM to a personal address;
+* create a new address even if Recipient doesn't have account in bot's db yet
+* show list of the most active donators.
+* show list of the most luckiest recipients.
+* show semux network stats
 
+Try `/help` for more details.
 
 ## How to run
 ### Change configs
 * Change config-bot.json file. 
 * Add your semux username and password for api.
-* Add bot token (it will generate here - <https://discordapp.com/developers/applications/me>)
+* Add bot token (generate it here - <https://discordapp.com/developers/applications/me>)
 * Add or change prefix, you can use "!","/","$" or any another string.
 ### Run bot
-* Run semux node
-* Clone the sourse code `git clone https://github.com/speedrunner911/semux-tip-bot`
-* Open semux-tip-bot folder `cd semux-tip-bot`
-* Install all dependecies with `npm install`
-* Create new model `sequelize db:migrate`
-* Run bot `node index.js`
-	
+* `cd semux-tip-bot`
+* `npm install`
+* `sequelize db:migrate`
+* `node index.js`
+
+## Maintainer
+[@speedrunner911](https://github.com/speedrunner911)
